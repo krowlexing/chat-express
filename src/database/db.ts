@@ -24,25 +24,53 @@ export class Db {
         this.participants = new ChatParticipant(this);
     }
 
-    chatWithUser(
-        userId: number
-    ): Pick<ChatData, "id" | "title" | "description">[] {
+    chatWithUser(userId: number): ChatsWithUser[] {
         const result = this.prepare(
             `SELECT 
                 chat.id, 
                 title, 
-                description 
+                description,
+                participant,
+                username
             FROM (SELECT chatId as id FROM ${this.participants.name} WHERE participant = ?) chats
                 JOIN ${this.chat.name} ON chat.id = chats.id
+                JOIN ${this.participants.name} ON ${this.participants.name}.chatId = chat.id
+                JOIN ${this.users.name} ON ${this.users.name}.id = ${this.participants.name}.participant;
             ;`
         ).all(userId);
+
+        const groupedChats = transform(result as any[]);
 
         if (result.length > 0) {
             const item = result[0];
             console.log(Object.keys(item!));
         }
 
-        return result as any[];
+        return groupedChats.map((chat) =>
+            chat.title === ""
+                ? {
+                      ...chat,
+                      title: chat.participants.find(
+                          (user) => user.id !== userId
+                      )!.username,
+                  }
+                : chat
+        );
+    }
+
+    autoChatTitle(userId: number, chatId: number): string {
+        const sql = `
+        SELECT 
+            username
+        FROM ${this.chat.name}
+        JOIN ${this.participants.name} ON ${this.participants.name}.chatId = ?
+        JOIN ${this.users.name} ON ${this.users.name}.id = ${this.participants.name}.participant
+        WHERE participant != ?;
+        ;`;
+
+        const result = this.prepare(sql).get(chatId, userId);
+        console.log(result);
+        return (result as any).username as string;
     }
 
     static instance(): Db {
@@ -56,4 +84,46 @@ export class Db {
     prepare(query: string) {
         return prepare(this, query);
     }
+}
+
+type SelectChatsWithUserRaw = {
+    id: number;
+    title: string;
+    description: string;
+    participant: number;
+    username: string;
+};
+
+type ChatsWithUser = {
+    id: number;
+    title: string;
+    description: string;
+    participants: {
+        id: number;
+        username: string;
+    }[];
+};
+
+function transform(rows: SelectChatsWithUserRaw[]) {
+    const ids = rows.map((row) => row.id);
+
+    let uniqueChats = [...new Set(ids)];
+
+    const groupedRows = uniqueChats.map((chatId) =>
+        rows.filter((row) => chatId === row.id)
+    );
+
+    return groupedRows.map((rows) => {
+        const participants = rows.map((row) => {
+            return { id: row.participant, username: row.username };
+        });
+
+        const row = rows[0];
+        return {
+            id: row.id,
+            title: row.title,
+            description: row.description,
+            participants,
+        };
+    });
 }

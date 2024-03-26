@@ -64,7 +64,6 @@ function setup(app: Express) {
         });
 
     app.use(express.json());
-    app.use(timeout(500));
 
     app.use("/auth", authRouter(db))
         .get("/users", (req, res) => {

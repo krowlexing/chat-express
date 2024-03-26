@@ -128,10 +128,11 @@ export function handleGetChat(req: Request, res: Response) {
     console.log(params);
 
     if (is<Claim>(claim) && is<Params>(params)) {
-        const data = allMessagesTransaction(claim.userId, +params.id);
-        console.log(data);
-        if (data != undefined) {
-            return res.send({ chatId: +params.id, data });
+        const result = allMessagesTransaction(claim.userId, +params.id);
+
+        if (result != undefined) {
+            const [data, title] = result;
+            return res.send({ chatId: +params.id, data, title });
         } else {
             console.log("transaction returned undefined");
         }
@@ -147,7 +148,10 @@ const allMessagesTransaction = db.sqlite.transaction(
         console.log(`userInChat: ${result}`);
         if (result) {
             const { user, chat } = result;
-            return db.messages.allFromChat(chat.id);
+            return [
+                db.messages.allFromChat(chat.id),
+                db.autoChatTitle(userId, chatId) ?? "",
+            ] as const;
         }
     }
 );
